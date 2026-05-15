@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Lock, ShieldAlert, Unlock, Clock } from "lucide-react";
 import { verifySession } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 async function getFrozenAccounts() {
   const accounts = await prisma.account.findMany({
     where: { status: "FROZEN" },

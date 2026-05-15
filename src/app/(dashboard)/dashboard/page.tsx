@@ -13,6 +13,8 @@ import Link from "next/link";
 import { ComplaintTrendChart, FraudRegionChart } from "@/components/dashboard/charts";
 import { Badge } from "@/components/ui/badge";
 
+export const dynamic = "force-dynamic";
+
 async function getDashboardStats() {
   const [
     totalAccounts,
