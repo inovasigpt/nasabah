@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/session";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const session = await verifySession();
 
