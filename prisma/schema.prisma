@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  name      String
+  role      Role     @default(ANALYST)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+  INVESTIGATOR
+}
+
+model Account {
+  id            Int           @id @default(autoincrement())
+  accountNumber String        @unique @map("account_number")
+  userId        Int           @map("user_id")
+  accountHolder String        @map("account_holder")
+  balance       Decimal       @default(0) @db.Decimal(18, 2)
+  riskScore     Int           @default(0) @map("risk_score")
+  status        AccountStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  sentTransactions     Transaction[] @relation("SentTransactions")
+  receivedTransactions Transaction[] @relation("ReceivedTransactions")
+  riskScores           RiskScore[]
+  freezeLogs           FreezeLog[]
+  complaints           Complaint[]
+
+  @@map("accounts")
+}
+
+enum AccountStatus {
+  ACTIVE
+  FLAGGED
+  RESTRICTED
+  FROZEN
+  CLOSED
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  senderId    Int      @map("sender_id")
+  recipientId Int      @map("recipient_id")
+  amount      Decimal  @db.Decimal(18, 2)
+  timestamp   DateTime @default(now())
+  channel     String
+  locationIp  String?  @map("location_ip")
+  deviceId    String?  @map("device_id")
+  isAnomaly   Boolean  @default(false) @map("is_anomaly")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  sender    Account @relation("SentTransactions", fields: [senderId], references: [id])
+  recipient Account @relation("ReceivedTransactions", fields: [recipientId], references: [id])
+
+  @@map("transactions")
+}
+
+model Complaint {
+  id               Int           @id @default(autoincrement())
+  ticketId         String        @unique @map("ticket_id")
+  accountId        Int           @map("account_id")
+  category         ComplaintCategory
+  description      String
+  aiPriorityScore  Int           @default(50) @map("ai_priority_score")
+  sentiment        String?
+  status           ComplaintStatus @default(OPEN)
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@map("complaints")
+}
+
+enum ComplaintCategory {
+  PHISHING
+  SKIMMING
+  SOCIAL_ENGINEERING
+  UNAUTHORIZED_TRANSACTION
+  ACCOUNT_TAKEOVER
+  OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+model AIRule {
+  id        Int      @id @default(autoincrement())
+  name      String
+  logicJson Json     @map("logic_json")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ai_rules")
+}
+
+model RiskScore {
+  id            Int      @id @default(autoincrement())
+  accountId     Int      @map("account_id")
+  score         Int
+  reasonVector  String?  @map("reason_vector")
+  explanation   String?
+  lastUpdated   DateTime @updatedAt @map("last_updated")
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@map("risk_scores")
+}
+
+model FreezeLog {
+  id            Int      @id @default(autoincrement())
+  accountId     Int      @map("account_id")
+  reasonCode    String   @map("reason_code")
+  triggeredBy   String   @map("triggered_by")
+  freezeDuration Int?    @map("freeze_duration")
+  unfrozenAt    DateTime? @map("unfrozen_at")
+  unfrozenBy    String?   @map("unfrozen_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@map("freeze_logs")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  details   Json?
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
