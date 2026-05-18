@@ -144,6 +144,110 @@ async function main() {
     console.log("Freeze log seeded for account", frozenAccount.accountNumber);
   }
 
+  // Seed AI rules
+  const rulesData = [
+    {
+      name: "High Value Offshore Transaction",
+      description: "Flag transactions over Rp 10M from outside Indonesia on new accounts",
+      severity: "HIGH",
+      logicJson: {
+        trigger: { type: "TRANSACTION_EVENT", label: "Transaction Event" },
+        conditions: {
+          operator: "AND",
+          conditions: [
+            { id: "c1", source: "TRANSACTION", field: "amount", operator: "GT", value: "10000000", label: "Amount > Rp 10,000,000" },
+            { id: "c2", source: "TRANSACTION", field: "locationIp", operator: "NEQ", value: "Indonesia", label: "IP Outside Indonesia" },
+            { id: "c3", source: "ACCOUNT", field: "accountAge", operator: "LT", value: "30", label: "Account Age < 30 days" },
+          ],
+        },
+        action: { type: "FLAG_FOR_REVIEW", label: "Flag for Review" },
+      },
+    },
+    {
+      name: "Suspicious Velocity & Mule Detection",
+      description: "Auto-freeze accounts receiving rapid funds from multiple sources",
+      severity: "CRITICAL",
+      logicJson: {
+        trigger: { type: "BULK_TRANSFER", label: "Bulk Transfer" },
+        conditions: {
+          operator: "AND",
+          conditions: [
+            { id: "c1", source: "TRANSACTION", field: "velocity", operator: "GTE", value: "5", label: "Velocity >= 5 tx in short time" },
+            { id: "c2", source: "TRANSACTION", field: "sameRecipientCount", operator: "GTE", value: "3", label: "Same Recipient Count >= 3" },
+            { id: "c3", source: "ACCOUNT", field: "riskScore", operator: "GTE", value: "50", label: "Risk Score >= 50" },
+          ],
+        },
+        action: { type: "AUTO_FREEZE", label: "Auto Freeze (Sandi 07)" },
+      },
+    },
+    {
+      name: "Off-Hours Anomaly Detection",
+      description: "Flag large transactions occurring outside business hours from unknown devices",
+      severity: "MEDIUM",
+      logicJson: {
+        trigger: { type: "TRANSACTION_EVENT", label: "Transaction Event" },
+        conditions: {
+          operator: "AND",
+          conditions: [
+            { id: "c1", source: "TRANSACTION", field: "isOffHours", operator: "EQ", value: "true", label: "Off-Hours (00:00-05:00)" },
+            { id: "c2", source: "TRANSACTION", field: "amount", operator: "GT", value: "5000000", label: "Amount > Rp 5,000,000" },
+          ],
+        },
+        action: { type: "FLAG_FOR_REVIEW", label: "Flag for Review" },
+      },
+    },
+    {
+      name: "Complaint-Linked Account Freeze",
+      description: "Freeze accounts with high risk score that have pending fraud complaints",
+      severity: "CRITICAL",
+      logicJson: {
+        trigger: { type: "COMPLAINT_FILED", label: "Complaint Filed" },
+        conditions: {
+          operator: "AND",
+          conditions: [
+            { id: "c1", source: "ACCOUNT", field: "riskScore", operator: "GTE", value: "70", label: "Risk Score >= 70" },
+            { id: "c2", source: "COMPLAINT", field: "complaintCategory", operator: "IN", value: ["PHISHING", "ACCOUNT_TAKEOVER"], label: "Complaint Category in Phishing/Account Takeover" },
+            { id: "c3", source: "COMPLAINT", field: "complaintSentiment", operator: "EQ", value: "Negative", label: "Complaint Sentiment = Negative" },
+          ],
+        },
+        action: { type: "AUTO_FREEZE", label: "Auto Freeze (Sandi 07)" },
+      },
+    },
+    {
+      name: "Weekend High-Risk Alert",
+      description: "Flag high-value weekend transactions from accounts with elevated risk",
+      severity: "MEDIUM",
+      logicJson: {
+        trigger: { type: "TRANSACTION_EVENT", label: "Transaction Event" },
+        conditions: {
+          operator: "AND",
+          conditions: [
+            { id: "c1", source: "TRANSACTION", field: "isWeekend", operator: "EQ", value: "true", label: "Weekend Transaction" },
+            { id: "c2", source: "TRANSACTION", field: "amount", operator: "GT", value: "20000000", label: "Amount > Rp 20,000,000" },
+            { id: "c3", source: "ACCOUNT", field: "riskScore", operator: "GTE", value: "40", label: "Risk Score >= 40" },
+          ],
+        },
+        action: { type: "FLAG_FOR_REVIEW", label: "Flag for Review" },
+      },
+    },
+  ];
+
+  // Remove old system-seeded rules, re-insert fresh
+  await prisma.aIRule.deleteMany({ where: { createdBy: "SYSTEM" } });
+  for (const ruleData of rulesData) {
+    await prisma.aIRule.create({
+      data: {
+        name: ruleData.name,
+        description: ruleData.description,
+        severity: ruleData.severity,
+        logicJson: ruleData.logicJson as any,
+        isActive: true,
+        createdBy: "SYSTEM",
+      },
+    });
+  }
+  console.log("AI rules seeded:", rulesData.length);
+
   console.log("Seeding completed.");
 }
 
