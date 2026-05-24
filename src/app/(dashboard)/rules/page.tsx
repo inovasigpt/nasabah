@@ -6,6 +6,8 @@ import {
   Background,
   Controls,
   MiniMap,
+  Handle,
+  Position,
   addEdge,
   useNodesState,
   useEdgesState,
@@ -49,6 +51,41 @@ import {
   ACTION_OPTIONS,
 } from "@/types/rules";
 
+function TriggerNode({ data }: any) {
+  return (
+    <div className="px-3 py-2 rounded text-center text-xs font-medium" style={{ background: "#003366", color: "#fff", border: "1px solid #FFCC00", width: 220 }}>
+      {data.label}
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ background: "#FFCC00", width: 10, height: 10 }} />
+    </div>
+  );
+}
+
+function ConditionNode({ data }: any) {
+  return (
+    <div className="px-3 py-2 rounded text-center text-xs font-medium" style={{ background: "#fff", border: "1px solid #f97316", width: 200 }}>
+      <Handle type="target" position={Position.Top} id="top" style={{ background: "#f97316", width: 10, height: 10 }} />
+      {data.label}
+      <Handle type="source" position={Position.Bottom} id="bottom" style={{ background: "#f97316", width: 10, height: 10 }} />
+    </div>
+  );
+}
+
+function ActionNode({ data }: any) {
+  const isFreeze = data.definition?.type === "AUTO_FREEZE";
+  return (
+    <div className="px-3 py-2 rounded text-center text-xs font-medium" style={{ background: isFreeze ? "#dc2626" : "#f97316", color: "#fff", border: `1px solid ${isFreeze ? "#b91c1c" : "#c2410c"}`, width: 220 }}>
+      <Handle type="target" position={Position.Top} id="top" style={{ background: "#fff", width: 10, height: 10 }} />
+      {data.label}
+    </div>
+  );
+}
+
+const nodeTypes = {
+  triggerNode: TriggerNode,
+  conditionNode: ConditionNode,
+  actionNode: ActionNode,
+};
+
 function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -56,10 +93,9 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
   const triggerId = "trigger-1";
   nodes.push({
     id: triggerId,
-    type: "input",
+    type: "triggerNode",
     position: { x: 250, y: 0 },
     data: { label: `Trigger: ${def.trigger.label}`, type: "trigger", definition: def.trigger },
-    style: { background: "#003366", color: "#fff", border: "1px solid #FFCC00", width: 220 },
   });
 
   let prevConditionId = triggerId;
@@ -69,9 +105,9 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
     const y = 120 + Math.floor(i / 2) * 100;
     nodes.push({
       id: condId,
+      type: "conditionNode",
       position: { x, y },
       data: { label: `Condition: ${cond.label}`, type: "condition", definition: cond },
-      style: { background: "#fff", border: "1px solid #f97316", width: 200 },
     });
     edges.push({
       id: `e-${prevConditionId}-${condId}`,
@@ -79,7 +115,7 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
       target: condId,
       animated: true,
       style: { stroke: "#003366" },
-      sourceHandle: i === 0 ? undefined : "bottom",
+      sourceHandle: "bottom",
     });
     prevConditionId = condId;
   });
@@ -88,15 +124,9 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
   const actionY = 120 + Math.max(0, def.conditions.conditions.length - 1) * 100 + 100;
   nodes.push({
     id: actionId,
-    type: "output",
+    type: "actionNode",
     position: { x: 250, y: actionY },
     data: { label: `Action: ${def.action.label}`, type: "action", definition: def.action },
-    style: {
-      background: def.action.type === "AUTO_FREEZE" ? "#dc2626" : "#f97316",
-      color: "#fff",
-      border: `1px solid ${def.action.type === "AUTO_FREEZE" ? "#b91c1c" : "#c2410c"}`,
-      width: 220,
-    },
   });
 
   if (def.conditions.conditions.length === 0) {
@@ -106,6 +136,7 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
       target: actionId,
       animated: true,
       style: { stroke: "#003366" },
+      sourceHandle: "bottom",
     });
   } else {
     const lastCondId = `cond-${def.conditions.conditions[def.conditions.conditions.length - 1].id}`;
@@ -115,6 +146,7 @@ function buildFlowFromDefinition(def: RuleDefinition): { nodes: Node[]; edges: E
       target: actionId,
       animated: true,
       style: { stroke: "#003366" },
+      sourceHandle: "bottom",
     });
   }
 
@@ -172,7 +204,13 @@ export default function RulesPage() {
   useEffect(() => {
     const { nodes: newNodes, edges: newEdges } = buildFlowFromDefinition(currentDefinition);
     setNodes(newNodes);
-    setEdges(newEdges);
+    setEdges((prevEdges) => {
+      const nodeIds = new Set(newNodes.map((n) => n.id));
+      const validPrevEdges = prevEdges.filter((e) => nodeIds.has(e.source) && nodeIds.has(e.target));
+      const validPrevEdgeIds = new Set(validPrevEdges.map((e) => e.id));
+      const missingNewEdges = newEdges.filter((e) => !validPrevEdgeIds.has(e.id));
+      return [...validPrevEdges, ...missingNewEdges];
+    });
   }, [currentDefinition]);
 
   useEffect(() => {
@@ -476,6 +514,7 @@ export default function RulesPage() {
             <ReactFlow
               nodes={nodes}
               edges={edges}
+              nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
@@ -484,7 +523,12 @@ export default function RulesPage() {
             >
               <Background color="#e2e8f0" gap={16} />
               <Controls />
-              <MiniMap nodeColor={(node) => (node.style?.background as string) || "#003366"} />
+              <MiniMap nodeColor={(node) => {
+                if (node.type === "triggerNode") return "#003366";
+                if (node.type === "conditionNode") return "#f97316";
+                if (node.type === "actionNode") return (node.data?.definition as any)?.type === "AUTO_FREEZE" ? "#dc2626" : "#f97316";
+                return "#003366";
+              }} />
             </ReactFlow>
           </div>
         </div>
